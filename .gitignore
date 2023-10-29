@@ -3,6 +3,18 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# 
+DataPoisoning_FL/
+bash/
+code_231018/
+code_231024/
+code_231027/
+data/
+experiment/
+output.png
+project/
+result1/
+
 # C extensions
 *.so
 
