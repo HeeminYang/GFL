@@ -308,6 +308,12 @@ if __name__ == '__main__':
             else:
                 aggregated_model = comm.recv(source=0, tag=33)
                 my_client.modelcopy(aggregated_model, rank)
+            comm.Barrier()
+
+            if rank == 0:
+                logger.info('Aggregation test')
+            else:
+                my_client.modify_clf()
                 my_client.aggregation_test(Round)
             comm.Barrier()
             
@@ -357,6 +363,12 @@ if __name__ == '__main__':
             else:
                 aggregated_model = comm.recv(source=0, tag=33)
                 my_client.modelcopy(aggregated_model, rank)
+            comm.Barrier()
+
+            if rank == 0:
+                logger.info('Aggregation test')
+            else:
+                my_client.modify_clf()
                 my_client.aggregation_test(Round)
             comm.Barrier()
 
