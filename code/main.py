@@ -69,7 +69,7 @@ if __name__ == '__main__':
     args.malicious = int(args.client * args.malicious_stage)
     # project name
     if args.project == 'GFL':
-        args.project_name = f'{args.project}_{args.dataset}_c{args.client}_m{args.malicious}_ps{args.p_stage}_wrmp{args.warm_up}_rd{args.round}_g{args.g_epoch}_clf{args.clf_epoch}_s{str(args.small)}_l{args.local_epoch}'
+        args.project_name = f'{args.project}_{args.dataset}_c{args.client}_m{args.malicious}_ps{args.p_stage}_wrmp{args.warm_up}_rd{args.round}_g{args.g_epoch}_clf{args.clf_epoch}_s{str(args.small)}_l{args.local_epoch}_th{args.threshold}'
     elif args.project == 'FL':
         args.project_name = f'{args.project}_{args.dataset}_c{args.client}_m{args.malicious}_lf{args.LF_set}_ps{args.p_stage}_rd{args.round}_s{str(args.small)}_l{args.local_epoch}'
         

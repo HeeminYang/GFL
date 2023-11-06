@@ -363,16 +363,16 @@ class client:
                 Dx_values.append(sum(epoch_Dx)/len(epoch_Dx))
                 DGz_values.append(sum(epoch_DGz)/len(epoch_DGz))
 
-            # Generating images after each epoch and saving
-            # set generator to evaluation mode
-            self.netG.eval()
-            with torch.no_grad():
-                # forward pass of G and generated image
-                fake_test = self.netG(self.z_test, self.test_Gy).cpu()
-                # save images in grid of 10 * 10
-                torchvision.utils.save_image(fake_test, f"{save_path}/{Round+1}_{epoch+1}.jpg", nrow=10, padding=0, normalize=True)
-            # set generator to training mode
-            self.netG.train()
+        # Generating images after each epoch and saving
+        # set generator to evaluation mode
+        self.netG.eval()
+        with torch.no_grad():
+            # forward pass of G and generated image
+            fake_test = self.netG(self.z_test, self.test_Gy).cpu()
+            # save images in grid of 10 * 10
+            torchvision.utils.save_image(fake_test, f"{save_path}/{Round+1}_{epoch+1}.jpg", nrow=10, padding=0, normalize=True)
+        # set generator to training mode
+        self.netG.train()
 
         self.logger.info(f" Client{self.name+1}: Epoch {epoch+1}/{g_epoch} Discriminator Loss {D_losses[-1]:.5f} Generator Loss {G_losses[-1]:.5f}"
                 + f" D(x) {Dx_values[-1]:.5f} D(G(x)) {DGz_values[-1]:.5f}")
