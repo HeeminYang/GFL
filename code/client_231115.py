@@ -3,9 +3,6 @@ from utils import weights_init
 import os
 import copy
 
-from math import floor
-from math import ceil
-
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -19,7 +16,7 @@ import matplotlib.pyplot as plt
 
 # client recieves args, generator, discriminator, and data loaders for training and testing
 class client:
-    def __init__(self, args, generator, discriminator, train_loader, test_loader,  device, logger, source, target, classifier=None, name=None, external_loader=None):
+    def __init__(self, args, generator, discriminator, train_loader, test_loader,  device, logger, source, target, classifier=None, local_model=None, name=None, external_loader=None):
         self.args = args
         self.netG = generator
         self.netD = discriminator
@@ -34,8 +31,6 @@ class client:
         self.device = device
 
         self.threshold = int(args.g_img_num * args.threshold)
-
-        self.Gen_switch = True
 
         # flipping label
         self.source = source
@@ -71,11 +66,11 @@ class client:
         self.aggregated_model = copy.deepcopy(classifier)
         self.aggregated_model.to(device)
 
-        # # local classifier
-        # self.local_model = local_model
-        # self.local_model.to(device)
-        # self.local_criterion = nn.CrossEntropyLoss()
-        # self.local_optimizer = torch.optim.Adam(self.local_model.parameters(), lr=0.001, weight_decay=1e-5)
+        # local classifier
+        self.local_model = local_model
+        self.local_model.to(device)
+        self.local_criterion = nn.CrossEntropyLoss()
+        self.local_optimizer = torch.optim.Adam(self.local_model.parameters(), lr=0.001, weight_decay=1e-5)
         
         # We calculate Binary cross entropy loss
         self.criterion = nn.BCELoss()
@@ -103,7 +98,7 @@ class client:
         # convert to one hot encoding
         self.test_Gy = self.onehot[self.test_y].to(device)
 
-    def save_results_ex(self, accuracy, loss, wrong_count, total_count,log,Round):
+    def save_results_ex(self, accuracy, loss, wrong_count, total_count,log,round):
         self.accuray_ex.append(accuracy)
         self.loss_ex.append(loss)
         self.asr1_ex.append((Counter(wrong_count[self.args.source])[self.args.target])/total_count[self.args.source])
@@ -115,13 +110,13 @@ class client:
         log = ' Client{:} Accuracy: {:.5f} Loss: {:.5f} ASR1: {:.5f} ASR2: {:.5f} Recall1: {:.5f} Recall2: {:.5f}'.format((self.name+1), accuracy, loss, self.asr1_ex[-1], self.asr2_ex[-1], self.flipped_recall1_ex[-1], self.flipped_recall2_ex[-1]) + log
         if accuracy > self.top_performance_ex[0]:
             self.top_performance_ex[0] = accuracy
-            self.top_performance_ex[1] = Round
+            self.top_performance_ex[1] = round
         if loss < self.top_performance_ex[2]:
             self.top_performance_ex[2] = loss
-            self.top_performance_ex[3] = Round
+            self.top_performance_ex[3] = round
         self.logger.info(log)
 
-    def save_results(self, accuracy, loss, wrong_count, total_count, log,Round):
+    def save_results(self, accuracy, loss, wrong_count, total_count, log,round):
         self.accuray.append(accuracy)
         self.loss.append(loss)
         self.asr1.append((Counter(wrong_count[self.args.source])[self.args.target])/total_count[self.args.source])
@@ -133,10 +128,10 @@ class client:
         log = ' Client{:} Accuracy: {:.5f} Loss: {:.5f} ASR1: {:.5f} ASR2: {:.5f} Recall1: {:.5f} Recall2: {:.5f}'.format((self.name+1), accuracy, loss, self.asr1[-1], self.asr2[-1], self.flipped_recall1[-1], self.flipped_recall2[-1]) + log
         if accuracy > self.top_performance[0]:
             self.top_performance[0] = accuracy
-            self.top_performance[1] = Round
+            self.top_performance[1] = round
         if loss < self.top_performance[2]:
             self.top_performance[2] = loss
-            self.top_performance[3] = Round
+            self.top_performance[3] = round
         self.logger.info(log)
 
     def plot_accuracy_and_loss(self, accuracies, losses, save_path, filename, top_performance):
@@ -270,7 +265,7 @@ class client:
         self.classifier.load_state_dict(copy.deepcopy(self.aggregated_model.state_dict()))
         self.classifier.to(self.device)
 
-    def gan_train(self, save_path, Round):
+    def gan_train(self, save_path, g_epoch, Round):
         self.netG.train()
 
         # List of values, which will be used for plotting purpose
@@ -281,7 +276,7 @@ class client:
 
         # number of training steps done on discriminator
         step = 0
-        for epoch in range(self.args.g_epoch):
+        for epoch in range(g_epoch):
             epoch_D_losses = []
             epoch_G_losses = []
             epoch_Dx = []
@@ -368,18 +363,18 @@ class client:
                 Dx_values.append(sum(epoch_Dx)/len(epoch_Dx))
                 DGz_values.append(sum(epoch_DGz)/len(epoch_DGz))
 
-        # # Generating images after each epoch and saving
-        # # set generator to evaluation mode
-        # self.netG.eval()
-        # with torch.no_grad():
-        #     # forward pass of G and generated image
-        #     fake_test = self.netG(self.z_test, self.test_Gy).cpu()
-        #     # save images in grid of 10 * 10
-        #     torchvision.utils.save_image(fake_test, f"{save_path}/{Round+1}_{epoch+1}.jpg", nrow=10, padding=0, normalize=True)
-        # # set generator to training mode
-        # self.netG.train()
+        # Generating images after each epoch and saving
+        # set generator to evaluation mode
+        self.netG.eval()
+        with torch.no_grad():
+            # forward pass of G and generated image
+            fake_test = self.netG(self.z_test, self.test_Gy).cpu()
+            # save images in grid of 10 * 10
+            torchvision.utils.save_image(fake_test, f"{save_path}/{Round+1}_{epoch+1}.jpg", nrow=10, padding=0, normalize=True)
+        # set generator to training mode
+        self.netG.train()
 
-        self.logger.info(f" Client{self.name+1}: Epoch {epoch+1}/{self.args.g_epoch} Discriminator Loss {D_losses[-1]:.5f} Generator Loss {G_losses[-1]:.5f}"
+        self.logger.info(f" Client{self.name+1}: Epoch {epoch+1}/{g_epoch} Discriminator Loss {D_losses[-1]:.5f} Generator Loss {G_losses[-1]:.5f}"
                 + f" D(x) {Dx_values[-1]:.5f} D(G(x)) {DGz_values[-1]:.5f}")
         
     def generate_image(self, save_path, Round):
@@ -393,7 +388,8 @@ class client:
             torchvision.utils.save_image(fake_image, f"{save_path}/data_{Round+1}.jpg", nrow=10, padding=0, normalize=True)
         dataset = torch.utils.data.TensorDataset(fake_image, new_test_y)
         generated_loader = DataLoader(dataset, batch_size=self.args.batch_size, shuffle=True)
-        self.generated_loader = generated_loader
+
+        return generated_loader
 
     def save_model(self, save_path):
         torch.save(self.netG.state_dict(), f"{save_path}/generator.pth")
@@ -460,10 +456,6 @@ class client:
             x = images.to(self.device)
             y = labels.to(self.device)
 
-            # for fid
-            feature = model(images, feature_extract=True)
-            features.append(feature)
-
             preds = self.classifier(x)
             loss = self.clf_criterion(preds, y)
 
@@ -471,78 +463,12 @@ class client:
 
             losses.append(loss.item())
             accuracies.append(correct)
-
-        features = torch.cat(features, dim=0)
-        self.mu_real = torch.mean(features, dim=0)
-        self.sigma_real = torch.cov(features.t())
 
         log += f"\n  Test Loss {sum(losses)/len(losses):.5f} Accuracy {sum(accuracies)/len(accuracies):.5f}"
         self.logger.info(log)
-
-        self.clf_acc = sum(accuracies)/len(accuracies)
-        self.clf_loss = sum(losses)/len(losses)
-     
+    
     # test generated images by CNN classifier
-    def local_gen_test(self, Round):
-        
-        self.classifier.eval()
-
-        losses = []
-        accuracies = []
-
-        for images, labels in self.generated_loader:
-
-            x = images.to(self.device)
-            y = labels.to(self.device)
-            
-            # for fid
-            feature = model(images, feature_extract=True)
-            features.append(feature)
-
-            preds = self.classifier(x)
-            loss = self.clf_criterion(preds, y)
-
-            correct = (torch.argmax(preds, dim=1) == y).type(torch.FloatTensor).mean().item()
-
-            losses.append(loss.item())
-            accuracies.append(correct)
-            
-        features = torch.cat(features, dim=0)
-        mu_gen = torch.mean(features, dim=0)
-        sigma_gen = torch.cov(features.t())
-
-        log = f" Client{self.name+1} Gen Test: Loss {sum(losses)/len(losses):.5f} Accuracy {sum(accuracies)/len(accuracies):.5f}"
-        self.logger.info(log)
-
-        self.gen_acc = sum(accuracies)/len(accuracies)
-        self.gen_loss = sum(losses)/len(losses)
-
-        fid = self.calculate_fid(self.mu_real, self.sigma_real, mu_gen, sigma_gen)
-        self.logger.info(f" Client{self.name+1} FID: {fid:.5f}")
-
-        if Round > (self.args.warm_up - 1):
-            if (self.gen_acc >= (floor(self.clf_acc * 100)/100)) and (self.gen_loss <= (ceil(self.clf_acc * 100)/100)):
-                self.Gen_switch = False
-                self.logger.info(f" Client{self.name+1}: Generator training is stopped at Round {Round+1} with accuracy {self.gen_acc:.5f} and loss {self.gen_loss:.5f}")
-
-    def calculate_fid(mu_real, sigma_real, mu_gen, sigma_gen):
-        # 평균 벡터 간의 차이의 제곱
-        ssdiff = np.sum((mu_real - mu_gen)**2.0)
-        
-        # 공분산 행렬의 제곱근
-        covmean = sqrtm(sigma_real.dot(sigma_gen))
-        
-        # 수치적 안정성을 위해 복소수 체크
-        if np.iscomplexobj(covmean):
-            covmean = covmean.real
-        
-        # FID 계산
-        fid = ssdiff + np.trace(sigma_real + sigma_gen - 2.0 * covmean)
-        return fid
-
-
-    # test generated images by CNN classifier
-    def aggregation_test(self, Round, logging=True):
+    def aggregation_test(self, round):
         
         self.classifier.eval()
         wrong_count = {j: [] for j in range(self.args.num_classes)}  # Initialize a dictionary to keep track of wrong predictions for each label
@@ -577,23 +503,17 @@ class client:
                         if true_label.item() not in total_count:
                             total_count[true_label.item()] = 0
                         total_count[true_label.item()] += 1
-        if logging:
-            log = f"\n   Summary of misclassifications:"
-            for true_label, pred_labels in wrong_count.items():
-                counter = Counter(pred_labels)
-                counter_dict = dict(counter)
-                oreder_dict = OrderedDict(sorted(counter_dict.items(), key=lambda item: item[0]))
-                log += f"\n   True label {true_label} was misclassified as: {oreder_dict}"
-        else:
-            log = ''
-            for true_label, pred_labels in wrong_count.items():
-                counter = Counter(pred_labels)
-                counter_dict = dict(counter)
-                oreder_dict = OrderedDict(sorted(counter_dict.items(), key=lambda item: item[0]))
-        self.save_results(sum(accuracies)/len(accuracies), sum(losses)/len(losses), wrong_count, total_count, log, Round)
+        
+        log = f" Client{self.name+1}:\n   Summary of misclassifications:"
+        for true_label, pred_labels in wrong_count.items():
+            counter = Counter(pred_labels)
+            counter_dict = dict(counter)
+            oreder_dict = OrderedDict(sorted(counter_dict.items(), key=lambda item: item[0]))
+            log += f"\n   True label {true_label} was misclassified as: {oreder_dict}"
+        self.save_results(sum(accuracies)/len(accuracies), sum(losses)/len(losses), wrong_count, total_count, log, round)
 
     # test generated images by CNN classifier
-    def external_test(self, Round):
+    def external_test(self, round):
         
         self.classifier.eval()
         wrong_count = {j: [] for j in range(self.args.num_classes)}  # Initialize a dictionary to keep track of wrong predictions for each label
@@ -630,87 +550,136 @@ class client:
                             total_count[true_label.item()] = 0
                         total_count[true_label.item()] += 1
         
-        
-        log = f"\n   Summary of misclassifications:"
-        for true_label, pred_labels in wrong_count.items():
-            counter = Counter(pred_labels)
-            counter_dict = dict(counter)
-            oreder_dict = OrderedDict(sorted(counter_dict.items(), key=lambda item: item[0]))
-            log += f"\n   True label {true_label} was misclassified as: {oreder_dict}"
-        self.save_results_ex(sum(accuracies)/len(accuracies), sum(losses)/len(losses), wrong_count, total_count, log, Round)
-     
-    # test generated images by local classifier
-    def gen_test(self, generated_loaders, states, save_path, Round, W):
-        
-        self.classifier.eval()
+        if (round+1) % self.args.d_iter == 0:
+            log = f"  Summary of misclassifications:"
+            for true_label, pred_labels in wrong_count.items():
+                counter = Counter(pred_labels)
+                counter_dict = dict(counter)
+                oreder_dict = OrderedDict(sorted(counter_dict.items(), key=lambda item: item[0]))
+                log += f"\n   True label {true_label} was misclassified as: {oreder_dict}"
+        else:
+            log = ''
+            for true_label, pred_labels in wrong_count.items():
+                counter = Counter(pred_labels)
+                counter_dict = dict(counter)
+                oreder_dict = OrderedDict(sorted(counter_dict.items(), key=lambda item: item[0]))
+        self.save_results_ex(sum(accuracies)/len(accuracies), sum(losses)/len(losses), wrong_count, total_count, log, round)
 
+    # local classifier training
+    def local_train(self):
+        
+        self.local_model.train()
+
+        # List of values, which will be used for plotting purpose
+        losses = []
+        accuracies = []
+
+        for epoch in range(self.args.local_epoch):
+            epoch_losses = []
+            epoch_accuracies = []
+            for images, labels in self.train_loader:
+                # images will be send to gpu, if cuda available
+                x = images.to(self.device)
+                # labels will be send to gpu, if cuda available
+                y = labels.to(self.device)
+
+                # forward pass
+                preds = self.local_model(x)
+                # calculate loss
+                loss = self.local_criterion(preds, y)
+
+                # calculate accuracy
+                correct = (torch.argmax(preds, dim=1) == y).type(torch.FloatTensor).mean().item()
+
+                # save values for plots
+                epoch_losses.append(loss.item())
+                epoch_accuracies.append(correct)
+
+                # zero accumalted grads
+                self.local_model.zero_grad()
+                # do backward pass
+                loss.backward()
+                # update classifier model
+                self.local_optimizer.step()
+            else:
+                # calculate average value for one epoch
+                losses.append(sum(epoch_losses)/len(epoch_losses))
+                accuracies.append(sum(epoch_accuracies)/len(epoch_accuracies))
+
+        self.logger.info(f" Client{self.name+1}: Epoch {epoch+1}/{self.args.local_epoch} Loss {losses[-1]:.5f} Accuracy {accuracies[-1]:.5f}")
+            
+    # test generated images by local classifier
+    def local_test(self, generated_loaders, save_path, Round, W, client_idx):
+        
+        self.local_model.eval()
+
+        gen_loader_sig_values = []
         log = f' Client{self.name+1}:'
-        for (i, generated_loader), state in zip(enumerate(generated_loaders), states):
+        for i, generated_loader in enumerate(generated_loaders):
             correct_preds = 0
             total_preds = 0
             loss_dict = {j: [] for j in range(self.args.num_classes)}  # Initialize a dictionary to keep track of wrong predictions for each label
+            sigmoid_dict = {j: [] for j in range(self.args.num_classes)}  # Initialize a dictionary to keep track of sigmoid scores for each label
             wrong_count = {j: [] for j in range(self.args.num_classes)}  # Initialize a dictionary to keep track of wrong predictions for each label
-            
-            if state == 1:
-                for batch_idx, (images, labels) in enumerate(generated_loader):
-                    images = images.to(self.device)
-                    labels = labels.to(self.device)
 
-                    # forward pass of classifier
-                    test_preds = self.classifier(images)
-                    pred_labels = torch.argmax(test_preds, dim=1)
-                    # max_prob, pred_labels = test_preds.max(1)
+            for batch_idx, (images, labels) in enumerate(generated_loader):
+                images = images.to(self.device)
+                labels = labels.to(self.device)
 
-                    # loss for each label
-                    for label in range(self.args.num_classes):
-                        mask = labels == label
-                        if mask.sum().item() > 0:
-                            loss_dict[label].append(self.clf_criterion(test_preds[mask], labels[mask]).item())
+                # forward pass of classifier
+                test_preds = self.local_model(images)
+                pred_labels = torch.argmax(test_preds, dim=1)
+                # max_prob, pred_labels = test_preds.max(1)
 
-                    # Count correct predictions
-                    correct_preds += (pred_labels == labels).sum().item()
-                    total_preds += labels.size(0)
-                    
-                    if not os.path.exists(f"{save_path}/{Round}/generator{i+1}"):
-                        os.makedirs(f"{save_path}/{Round}/generator{i+1}")
-
-                    # Check for misclassified images
-                    for img_idx, (true_label, pred_label) in enumerate(zip(labels, pred_labels)):
-                        if true_label != pred_label:
-                            # Log the misclassified image's true and predicted labels
-                            # self.logger.info(f"Client{self.name+1}: Batch {batch_idx}, Image {img_idx}: True label: {true_label}, Predicted: {pred_label}")
-                            
-                            # Save the misclassified image
-                            img_path = f"{save_path}/{Round}/generator{i+1}/img{img_idx}_true{true_label}_pred{pred_label}.jpg"
-                            torchvision.utils.save_image(images[img_idx].cpu(), img_path, padding=0, normalize=True)
-                            
-                            # Store the predicted label for this true label
-                            if true_label.item() not in wrong_count:
-                                wrong_count[true_label.item()] = []
-                            wrong_count[true_label.item()].append(pred_label.item())
-
-                # After processing all batches for this generator, log the summary of misclassifications
-                accuracy = correct_preds / total_preds
                 # loss for each label
-                loss = {label: sum(loss_dict[label])/len(loss_dict[label]) for label in range(self.args.num_classes)}
-                log += f"\n  Generator {i+1} Accuracy: {accuracy:.5f}, Loss: {loss}\n   Summary of misclassifications for Generator {i+1}:"
-                for true_label, pred_labels in wrong_count.items():
-                    counter = Counter(pred_labels)
-                    counter_dict = dict(counter)
-                    oreder_dict = OrderedDict(sorted(counter_dict.items(), key=lambda item: item[0]))
-                    log += f" \n    True label {true_label} was misclassified as: {oreder_dict}"
-                    anomaly = [number for number, count in oreder_dict.items() if count > self.threshold]
-                    if anomaly:
-                        for poison_label in anomaly:
-                            log += f"\n     Detection: Source label {true_label} was misclassified as Target label {poison_label}"
-                        if not self.name == i:
-                            W[i] = 0
-            else:
-                if not self.name == i:
-                    W[i] = 0
+                for label in range(self.args.num_classes):
+                    mask = labels == label
+                    if mask.sum().item() > 0:
+                        loss_dict[label].append(self.clf_criterion(test_preds[mask], labels[mask]).item())
+
+                # Count correct predictions
+                correct_preds += (pred_labels == labels).sum().item()
+                total_preds += labels.size(0)
+                
+                if not os.path.exists(f"{save_path}/{Round}/generator{i+1}"):
+                    os.makedirs(f"{save_path}/{Round}/generator{i+1}")
+
+                # Check for misclassified images
+                for img_idx, (true_label, pred_label) in enumerate(zip(labels, pred_labels)):
+                    if true_label != pred_label:
+                        # Log the misclassified image's true and predicted labels
+                        # self.logger.info(f"Client{self.name+1}: Batch {batch_idx}, Image {img_idx}: True label: {true_label}, Predicted: {pred_label}")
+                        
+                        # Save the misclassified image
+                        img_path = f"{save_path}/{Round}/generator{i+1}/img{img_idx}_true{true_label}_pred{pred_label}.jpg"
+                        torchvision.utils.save_image(images[img_idx].cpu(), img_path, padding=0, normalize=True)
+                        
+                        # Store the predicted label for this true label
+                        if true_label.item() not in wrong_count:
+                            wrong_count[true_label.item()] = []
+                        wrong_count[true_label.item()].append(pred_label.item())
+                
+            gen_loader_sig_values.append(sigmoid_dict)
+
+            # After processing all batches for this generator, log the summary of misclassifications
+            accuracy = correct_preds / total_preds
+            # loss for each label
+            loss = {label: sum(loss_dict[label])/len(loss_dict[label]) for label in range(self.args.num_classes)}
+            log += f"\n  Generator {i+1} Accuracy: {accuracy:.5f}, Loss: {loss}\n   Summary of misclassifications for Generator {i+1}:"
+            for true_label, pred_labels in wrong_count.items():
+                counter = Counter(pred_labels)
+                counter_dict = dict(counter)
+                oreder_dict = OrderedDict(sorted(counter_dict.items(), key=lambda item: item[0]))
+                log += f" \n    True label {true_label} was misclassified as: {oreder_dict}"
+                anomaly = [number for number, count in oreder_dict.items() if count > self.threshold]
+                if anomaly:
+                    for poison_label in anomaly:
+                        log += f"\n     Detection: Source label {true_label} was misclassified as Target label {poison_label}"
+                    if not self.name == i:
+                        W[i] = 0
         self.logger.info(log)
         return W
-
+                    
     def log_top_performance(self):
         self.logger.info(f" Client{self.name+1}: Top Performance Accuracy: {self.top_performance[0]:.5f} At Round: {self.top_performance[1]} Loss: {self.top_performance[2]:.5f} At Round: {self.top_performance[3]}")
         self.logger.info(f" Client{self.name+1}: Top Performance External Accuracy: {self.top_performance_ex[0]:.5f} At Round: {self.top_performance_ex[1]} Loss: {self.top_performance_ex[2]:.5f} At Round: {self.top_performance_ex[3]}")

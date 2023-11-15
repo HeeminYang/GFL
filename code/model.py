@@ -16,13 +16,14 @@ class CNN(nn.Module):
         self.dropout = nn.Dropout(0.5)  # 드롭아웃 추가
         self.fc = nn.Linear(7*7*32, 10)
 
-    def forward(self, x):
+    def forward(self, x, feature_extract=False):
         out = self.layer1(x)
         out = self.layer2(out)
         out = out.view(out.size(0), -1)
-        out = self.dropout(out)  # 드롭아웃 적용 위치
+        if feature_extract:
+            return out  # 특징 추출 시 여기서 반환
+        out = self.dropout(out)
         out = self.fc(out)
-        
         return out
   
 class MLP(nn.Module):

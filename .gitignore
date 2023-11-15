@@ -20,6 +20,8 @@ experiment/
 output.png
 project/
 result1/
+log/
+log_past/
 
 # C extensions
 *.so

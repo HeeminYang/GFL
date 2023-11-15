@@ -47,7 +47,7 @@ if __name__ == '__main__':
     parser.add_argument('--size_z', type=int, default=100)
     parser.add_argument('--small', type=bool, default=False)
     parser.add_argument('--threshold', type=float, default=0.25)
-    parser.add_argument('--warm_up', type=int, default=50)
+    parser.add_argument('--warm_up', type=int, default=200)
     args = parser.parse_args()
 
     # fix random seed
@@ -247,138 +247,8 @@ if __name__ == '__main__':
                     my_client.local_gen_test(Round)
             comm.Barrier()
 
-            # Make generated data loaders
-
-            clients = comm.gather(my_client, root=0)
-
-            if rank == 0:
-                clients.pop(0)
-                generated_loaders = []
-                states = [0 if c.Gen_switch else 1 for c in clients]
-                for i in range(len(clients)):
-                    if states[i] == 1:
-                        generated_loaders.append(copy.deepcopy(clients[i].generated_loader))
-                    else:
-                        generated_loaders.append(None)
-                serialized_generated_loaders = pickle.dumps(generated_loaders)
-            else:
-                serialized_generated_loaders = None
-
-            serialized_generated_loaders = comm.bcast(serialized_generated_loaders, root=0)
-            states = comm.bcast(states, root=0)
-
-            if rank != 0:
-                generated_loaders = pickle.loads(serialized_generated_loaders)
-            del serialized_generated_loaders
-            comm.Barrier()
-
-            if rank == 0:
-                logger.info('Neighbor Generator test')
-            else:
-                W_k = copy.deepcopy(init_W_k)
-                W_k = my_client.gen_test(generated_loaders, states, f'{save_path}/{args.project_name}/wrong/client{rank}', Round, W_k)
-            comm.Barrier()
-
-            # calculate W
-            gathered_W = comm.gather(W_k, root=0)
-            if rank == 0:
-                gathered_W.pop(0)
-                for i, row in enumerate(gathered_W):
-                    W[i] = row
-                logger.info(f'Changed Adjacency Matrix: \n{W}')
-            comm.Barrier()
-            
-            # Aggregation
-            clients = comm.gather(my_client, root=0)
-            comm.Barrier()
-            if rank == 0:
-                logger.info('Aggregation')
-                clients.pop(0)
-                for i in range(args.client):
-                    comm.send(fed_avg(clients, W[i]), dest=i+1, tag=33)
-            else:
-                aggregated_model = comm.recv(source=0, tag=33)
-                my_client.modelcopy(aggregated_model, rank)
-            comm.Barrier()
-
-            if rank == 0:
-                logger.info('Aggregation test')
-            else:
-                if (np.sum(W_k) > 1) or (Round == (args.round - 1)):
-                    my_client.modify_clf()
-                    my_client.aggregation_test(Round, logging=True)
-                elif np.sum(W_k) == 1:
-                    my_client.modify_clf()
-                    my_client.aggregation_test(Round, logging=False)            
-            comm.Barrier()
-            
-            if rank == 0:
-                logger.info('external test')
-            else:
-                my_client.external_test(Round)
-            comm.Barrier()
-
         if rank ==0:
             logger.info(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-        else:
-            my_client.make_plot(f'{save_path}/{args.project_name}/result/client{rank}', 'acc_loss(local)', 'asr(local)', 'recall(local)')
-            my_client.make_plot_ex(f'{save_path}/{args.project_name}/result/client{rank}', 'acc_loss(ex)', 'asr(ex)', 'recall(ex)')
-
-        comm.Barrier()
-
-    elif args.project == 'FL':
-        for Round in range(args.round):
-            if rank == 0:
-                logger.info(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-                logger.info(f'Round {Round+1} start')
-            comm.Barrier()
-
-            if rank == 0:  # rank 0 프로세스만 디렉토리 확인 및 생성
-                for i in range(args.client):
-                    # model_dir = f'{save_path}/{args.project_name}/model/client{i+1}'
-                    # if not os.path.exists(model_dir):
-                    #     os.makedirs(model_dir)
-                    result_dir = f'{save_path}/{args.project_name}/result/client{i+1}'
-                    if not os.path.exists(result_dir):
-                        os.makedirs(result_dir)
-        
-            # classifier training
-            if rank == 0:
-                logger.info('Classifier training')
-            else:
-                my_client.clf_train()
-            comm.Barrier()
-            
-            # Aggregation
-            clients = comm.gather(my_client, root=0)
-            comm.Barrier()
-            if rank == 0:
-                logger.info('Aggregation')
-                clients.pop(0)
-                for i in range(args.client):
-                    comm.send(fed_avg(clients, W[i]), dest=i+1, tag=33)
-            else:
-                aggregated_model = comm.recv(source=0, tag=33)
-                my_client.modelcopy(aggregated_model, rank)
-            comm.Barrier()
-
-            if rank == 0:
-                logger.info('Aggregation test')
-            else:
-                my_client.modify_clf()
-                my_client.aggregation_test(Round)
-            comm.Barrier()
-
-            if rank == 0:
-                logger.info('external test')
-            else:
-                my_client.external_test(Round)
-            comm.Barrier()
-            
-        if rank !=0:
-            my_client.make_plot(f'{save_path}/{args.project_name}/result/client{rank}', 'acc_loss(local)', 'asr(local)', 'recall(local)')
-            my_client.make_plot_ex(f'{save_path}/{args.project_name}/result/client{rank}', 'acc_loss(ex)', 'asr(ex)', 'recall(ex)')
-
         comm.Barrier()
 
 MPI.Finalize()
