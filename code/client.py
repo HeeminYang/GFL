@@ -5,6 +5,7 @@ import copy
 
 from math import floor
 from math import ceil
+from scipy.linalg import sqrtm
 
 import torch
 from torch import nn
@@ -452,6 +453,7 @@ class client:
         
         self.classifier.eval()
 
+        features = []
         losses = []
         accuracies = []
 
@@ -461,7 +463,7 @@ class client:
             y = labels.to(self.device)
 
             # for fid
-            feature = model(images, feature_extract=True)
+            feature = self.classifier(x, feature_extract=True)
             features.append(feature)
 
             preds = self.classifier(x)
@@ -487,6 +489,7 @@ class client:
         
         self.classifier.eval()
 
+        features = []
         losses = []
         accuracies = []
 
@@ -496,7 +499,7 @@ class client:
             y = labels.to(self.device)
             
             # for fid
-            feature = model(images, feature_extract=True)
+            feature = self.classifier(x, feature_extract=True)
             features.append(feature)
 
             preds = self.classifier(x)
@@ -525,7 +528,13 @@ class client:
                 self.Gen_switch = False
                 self.logger.info(f" Client{self.name+1}: Generator training is stopped at Round {Round+1} with accuracy {self.gen_acc:.5f} and loss {self.gen_loss:.5f}")
 
-    def calculate_fid(mu_real, sigma_real, mu_gen, sigma_gen):
+    def calculate_fid(self, mu_real, sigma_real, mu_gen, sigma_gen):
+        # torch.Tensor를 numpy.ndarray로 변환
+        mu_real = mu_real.detach().cpu().numpy() if isinstance(mu_real, torch.Tensor) else mu_real
+        mu_gen = mu_gen.detach().cpu().numpy() if isinstance(mu_gen, torch.Tensor) else mu_gen
+        sigma_real = sigma_real.detach().cpu().numpy() if isinstance(sigma_real, torch.Tensor) else sigma_real
+        sigma_gen = sigma_gen.detach().cpu().numpy() if isinstance(sigma_gen, torch.Tensor) else sigma_gen
+
         # 평균 벡터 간의 차이의 제곱
         ssdiff = np.sum((mu_real - mu_gen)**2.0)
         

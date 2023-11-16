@@ -33,9 +33,9 @@ if __name__ == '__main__':
     parser.add_argument('--client', type=int, default=10)
     parser.add_argument('--d_iter', type=int, default=1)
     parser.add_argument('--dataset', type=str, default='FMNIST', choices=['MNIST', 'FMNIST'])
-    parser.add_argument('--gpu_num', type=int, default=1)
+    parser.add_argument('--gpu_num', type=int, default=0)
     parser.add_argument('--g_img_num', type=int, default=100)
-    parser.add_argument('--g_epoch', type=int, default=1)
+    parser.add_argument('--g_epoch', type=int, default=4)
     parser.add_argument('--Ksteps', type=int, default=2)
     parser.add_argument('--LF_set', type=int, default=1, choices=[1, 2, 3])
     parser.add_argument('--malicious_stage', type=float, default=0.1)
@@ -47,7 +47,7 @@ if __name__ == '__main__':
     parser.add_argument('--size_z', type=int, default=100)
     parser.add_argument('--small', type=bool, default=False)
     parser.add_argument('--threshold', type=float, default=0.25)
-    parser.add_argument('--warm_up', type=int, default=50)
+    parser.add_argument('--warm_up', type=int, default=20)
     args = parser.parse_args()
 
     # fix random seed
