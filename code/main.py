@@ -52,6 +52,7 @@ if __name__ == '__main__':
 
     # fix random seed
     torch.manual_seed(777)
+    torch.cuda.manual_seed(777)
     torch.cuda.manual_seed_all(777)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
