@@ -264,7 +264,7 @@ class client:
         self.plot_asr(self.asr1_ex, self.asr2_ex, save_path, asr_name)
         self.plot_recall(self.flipped_recall1_ex, self.flipped_recall2_ex, save_path, recall_name)
 
-    def modelcopy(self, model, rank):
+    def modelcopy(self, model):
         self.aggregated_model.load_state_dict(copy.deepcopy(model))
     
     def modify_clf(self):
@@ -691,7 +691,7 @@ class client:
                             
                             # Save the misclassified image
                             img_path = f"{save_path}/{Round}/generator{i+1}/img{img_idx}_true{true_label}_pred{pred_label}.jpg"
-                            torchvision.utils.save_image(images[img_idx].cpu(), img_path, padding=0, normalize=True)
+                            # torchvision.utils.save_image(images[img_idx].cpu(), img_path, padding=0, normalize=True)
                             
                             # Store the predicted label for this true label
                             if true_label.item() not in wrong_count:

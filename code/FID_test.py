@@ -51,13 +51,13 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # fix random seed
-    torch.manual_seed(777)
-    torch.cuda.manual_seed_all(777)
+    torch.manual_seed(42)
+    torch.cuda.manual_seed_all(42)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    np.random.seed(777)
-    random.seed(777)
-    os.environ['PYTHONHASHSEED'] = str(777)
+    np.random.seed(42)
+    random.seed(42)
+    os.environ['PYTHONHASHSEED'] = str(42)
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -92,7 +92,7 @@ if __name__ == '__main__':
         logger.info(f"Using {DEVICE} backend")
         
         # Adjacency Matrix
-        W = W_t(args.client, args.p, 777)
+        W = W_t(args.client, args.p)
         logger.info(f'Adjacency Matrix:\n{W}')
 
         # data loader 

@@ -33,7 +33,7 @@ if __name__ == '__main__':
     parser.add_argument('--client', type=int, default=10)
     parser.add_argument('--d_iter', type=int, default=1)
     parser.add_argument('--dataset', type=str, default='FMNIST', choices=['MNIST', 'FMNIST'])
-    parser.add_argument('--gpu_num', type=int, default=0)
+    parser.add_argument('--gpu_num', type=int, default=2)
     parser.add_argument('--g_img_num', type=int, default=100)
     parser.add_argument('--g_epoch', type=int, default=4)
     parser.add_argument('--Ksteps', type=int, default=2)
@@ -48,17 +48,18 @@ if __name__ == '__main__':
     parser.add_argument('--small', type=bool, default=False)
     parser.add_argument('--threshold', type=float, default=0.25)
     parser.add_argument('--warm_up', type=int, default=20)
+    parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()
 
     # fix random seed
-    torch.manual_seed(777)
-    torch.cuda.manual_seed(777)
-    torch.cuda.manual_seed_all(777)
+    torch.manual_seed(args.seed)
+    torch.cuda.manual_seed(args.seed)
+    torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
-    np.random.seed(777)
-    random.seed(777)
-    os.environ['PYTHONHASHSEED'] = str(777)
+    np.random.seed(args.seed)
+    random.seed(args.seed)
+    os.environ['PYTHONHASHSEED'] = str(args.seed)
 
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
@@ -86,14 +87,15 @@ if __name__ == '__main__':
     comm.Barrier()
 
     if rank == 0:
+        start_time = time.time()
         # use cuda if available
-        os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_num)
-        DEVICE = torch.device("cuda" if torch.cuda.is_available()
+        # os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_num)
+        DEVICE = torch.device(f"cuda:{args.gpu_num}" if torch.cuda.is_available()
                             else "cpu")
         logger.info(f"Using {DEVICE} backend")
         
         # Adjacency Matrix
-        W = W_t(args.client, args.p, 777)
+        W = W_t(args.client, args.p)
         logger.info(f'Adjacency Matrix:\n{W}')
 
         # data loader 
@@ -299,7 +301,7 @@ if __name__ == '__main__':
                     comm.send(fed_avg(clients, W[i]), dest=i+1, tag=33)
             else:
                 aggregated_model = comm.recv(source=0, tag=33)
-                my_client.modelcopy(aggregated_model, rank)
+                my_client.modelcopy(aggregated_model)
             comm.Barrier()
 
             if rank == 0:
@@ -320,7 +322,13 @@ if __name__ == '__main__':
             comm.Barrier()
 
         if rank ==0:
-            logger.info(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            hours, remainder = divmod(elapsed_time, 3600)
+            minutes, seconds = divmod(remainder, 60)
+
+            logger.info(f'End time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
+            logger.info(f'Total time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds')
         else:
             my_client.make_plot(f'{save_path}/{args.project_name}/result/client{rank}', 'acc_loss(local)', 'asr(local)', 'recall(local)')
             my_client.make_plot_ex(f'{save_path}/{args.project_name}/result/client{rank}', 'acc_loss(ex)', 'asr(ex)', 'recall(ex)')
@@ -360,7 +368,7 @@ if __name__ == '__main__':
                     comm.send(fed_avg(clients, W[i]), dest=i+1, tag=33)
             else:
                 aggregated_model = comm.recv(source=0, tag=33)
-                my_client.modelcopy(aggregated_model, rank)
+                my_client.modelcopy(aggregated_model)
             comm.Barrier()
 
             if rank == 0:
@@ -376,7 +384,15 @@ if __name__ == '__main__':
                 my_client.external_test(Round)
             comm.Barrier()
             
-        if rank !=0:
+        if rank ==0:
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            hours, remainder = divmod(elapsed_time, 3600)
+            minutes, seconds = divmod(remainder, 60)
+
+            logger.info(f'End time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
+            logger.info(f'Total time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds')
+        else:
             my_client.make_plot(f'{save_path}/{args.project_name}/result/client{rank}', 'acc_loss(local)', 'asr(local)', 'recall(local)')
             my_client.make_plot_ex(f'{save_path}/{args.project_name}/result/client{rank}', 'acc_loss(ex)', 'asr(ex)', 'recall(ex)')
 

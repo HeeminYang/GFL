@@ -29,8 +29,7 @@ def weights_init(net):
         nn.init.constant_(net.bias.data, 0)
 
 # Adjacency Matrix
-def W_t(num_client,p,seed):
-    np.random.seed(seed)
+def W_t(num_client,p):
     while True:
         A = np.random.random((num_client,num_client));
         A[A<p] = 1;

@@ -68,7 +68,7 @@ def MNIST_split_loader(logger, mnist_dataset, subset_indices, batch_size, p_stag
     test_dataset = adjust_dataset_length(test_dataset, batch_size)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_dataset, num_workers=2, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(train_dataset, num_workers=2, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, num_workers=2, batch_size=batch_size, shuffle=False)
 
     return train_loader, test_loader, train_dataset, test_dataset
@@ -123,7 +123,7 @@ def get_MNIST_loaders(data_dir, num_client, mali_client, logger, distribution, b
     # Central scenario
     central_train_dataset = ConcatDataset(central_trainset)
     central_test_dataset = ConcatDataset(central_testset)
-    central_train_loader = DataLoader(central_train_dataset, num_workers=2, batch_size=batch_size, shuffle=True)
+    central_train_loader = DataLoader(central_train_dataset, num_workers=2, batch_size=batch_size, shuffle=False)
     central_test_loader = DataLoader(central_test_dataset, num_workers=2, batch_size=batch_size, shuffle=False)
 
     # Test set loader
@@ -190,7 +190,7 @@ def FMNIST_split_loader(logger, mnist_dataset, subset_indices, batch_size, p_sta
     test_dataset = adjust_dataset_length(test_dataset, batch_size)
 
     # Create DataLoaders
-    train_loader = DataLoader(train_dataset, num_workers=2, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(train_dataset, num_workers=2, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, num_workers=2, batch_size=batch_size, shuffle=False)
 
     return train_loader, test_loader, train_dataset, test_dataset
@@ -245,7 +245,7 @@ def get_FMNIST_loaders(data_dir, num_client, mali_client, logger, distribution, 
     # Central scenario
     central_train_dataset = ConcatDataset(central_trainset)
     central_test_dataset = ConcatDataset(central_testset)
-    central_train_loader = DataLoader(central_train_dataset, num_workers=2, batch_size=batch_size, shuffle=True)
+    central_train_loader = DataLoader(central_train_dataset, num_workers=2, batch_size=batch_size, shuffle=False)
     central_test_loader = DataLoader(central_test_dataset, num_workers=2, batch_size=batch_size, shuffle=False)
 
     # Test set loader
