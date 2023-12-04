@@ -4,7 +4,7 @@ from mpi4py import MPI
 
 from Data_231028 import create_federated_loaders, create_federated_loaders_ex
 from Data import get_MNIST_loaders, get_FMNIST_loaders
-from client_Brier import client
+from client import client
 from cDCGAN import Generator_MNIST, Discriminator_MNIST
 from model import CNN
 from utils import get_logger, W_t
@@ -67,15 +67,11 @@ if __name__ == '__main__':
     save_path = f'./project'
     # malicious client
     args.malicious = int(args.client * args.malicious_stage)
-    if args.small:
-        data_state = 'small'
-    else:
-        data_state = ''
     # project name
     if args.project == 'GFL':
-        args.project_name = f'{args.project}_{args.dataset}{data_state}_c{args.client}_m{args.malicious}_ps{args.p_stage}_wrmp{args.warm_up}_rd{args.round}_g{args.g_epoch}_d{args.d_iter}_clf{args.clf_epoch}_th{args.threshold}_sd{args.seed}'
+        args.project_name = f'{args.project}_{args.dataset}_c{args.client}_m{args.malicious}_ps{args.p_stage}_wrmp{args.warm_up}_rd{args.round}_g{args.g_epoch}_d{args.d_iter}_clf{args.clf_epoch}_th{args.threshold}_sd{args.seed}'
     elif args.project == 'FL':
-        args.project_name = f'{args.project}_{args.dataset}{data_state}_c{args.client}_m{args.malicious}_lf{args.LF_set}_ps{args.p_stage}_rd{args.round}_sd{args.seed}'
+        args.project_name = f'{args.project}_{args.dataset}_c{args.client}_m{args.malicious}_lf{args.LF_set}_ps{args.p_stage}_rd{args.round}_sd{args.seed}'
 
     # logger
     now = time.strftime("%Y%m%d_%H%M%S", time.localtime())
@@ -130,7 +126,7 @@ if __name__ == '__main__':
         # test_loaders, _ = create_federated_loaders(test_dataset, args.client, args.malicious, args.source, args.target, args.p_stage, 32, logger)
         logger.info('External dataset loading...')
         external_dataset = datasets.FashionMNIST(root='./data', train=False, download=True, transform=transform)
-        external_loaders, data_size_ex = create_federated_loaders_ex(external_dataset, 1, args.batch_size, logger, args.small)
+        external_loaders, data_size_ex = create_federated_loaders_ex(external_dataset, 1, args.batch_size, logger)
         # train_loaders, test_loaders, malicious, external_loaders = get_FMNIST_loaders("/home/heemin/GFL/data", args.client, args.malicious, logger, 'IID', args.batch_size, args.p_stage, False)
 
     elif args.dataset == 'CIFAR10':
@@ -188,7 +184,6 @@ if __name__ == '__main__':
     # save_path = f'./project'
 
     init_W = copy.deepcopy(W)
-    W = np.eye(args.client)
     count = 0
     
     if args.project == 'GFL':
@@ -224,24 +219,21 @@ if __name__ == '__main__':
                     clients[i].generate_image(f'{save_path}/{args.project_name}/img/client{i+1}', Round)
                     clients[i].local_gen_test(Round)
 
+            # Make generated data loaders
+            generated_loaders = []
+            states = [0 if c.Gen_switch else 1 for c in clients]
+            for i in range(len(clients)):
+                if states[i] == 1:
+                    generated_loaders.append(copy.deepcopy(clients[i].generated_loader))
+                else:
+                    generated_loaders.append(None)
+
             if (Round+1) % args.d_iter == 0:
                 logger.info('Neighbor Generator test')
-
-                # Make generated data loaders
-                generated_loaders = []
-                states = [0 if c.Gen_switch else 1 for c in clients]
                 W = copy.deepcopy(init_W)
-                for i in range(len(clients)):
-                    if states[i] == 1:
-                        generated_loaders.append(copy.deepcopy(clients[i].generated_loader))
-                    else:
-                        generated_loaders.append(None)
-                        for j in range(len(clients)):
-                            if not i == j:
-                                W[j][i] = 0
-
                 for i in range(args.client):
-                    W[i] = clients[i].gen_test(generated_loaders, states, f'{save_path}/{args.project_name}/wrong/client{i+1}', Round, W[i])            
+                    if states[i] == 1:
+                        W[i] = clients[i].gen_test(generated_loaders, states, f'{save_path}/{args.project_name}/wrong/client{i+1}', Round, W[i])            
 
             # calculate W
             logger.info(f'Changed Adjacency Matrix: \n{W}')
@@ -249,8 +241,7 @@ if __name__ == '__main__':
             # Aggregation
             logger.info('Aggregation')
             for i in range(args.client):
-                if (np.sum(W[i])>1) or (Round == (args.round - 1)):
-                    clients[i].modelcopy(fed_avg(clients, W[i]))
+                clients[i].modelcopy(fed_avg(clients, W[i]))
             
             logger.info('Aggregation test')
             for i in range(args.client):
@@ -258,7 +249,7 @@ if __name__ == '__main__':
                     clients[i].modify_clf()
                     clients[i].aggregation_test(Round, logging=True)
                 elif np.sum(W[i]) == 1:
-                    # clients[i].modify_clf()
+                    clients[i].modify_clf()
                     clients[i].aggregation_test(Round, logging=False)
             logger.info('external test')
             for i in range(args.client):
@@ -278,7 +269,6 @@ if __name__ == '__main__':
             clients[i].make_plot_ex(f'{save_path}/{args.project_name}/result/client{i+1}', 'acc_loss(ex)', 'asr(ex)', 'recall(ex)')
 
     elif args.project == 'FL':
-        W = copy.deepcopy(init_W)
         for Round in range(args.round):
             logger.info(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
             logger.info(f'Round {Round+1} start')

@@ -4,7 +4,7 @@ from mpi4py import MPI
 
 from Data_231028 import create_federated_loaders, create_federated_loaders_ex
 from Data import get_MNIST_loaders, get_FMNIST_loaders
-from client_Brier import client
+from client_imagegen import client
 from cDCGAN import Generator_MNIST, Discriminator_MNIST
 from model import CNN
 from utils import get_logger, W_t
@@ -30,7 +30,6 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--clf_epoch', type=int, default=1)
     parser.add_argument('--client', type=int, default=10)
-    parser.add_argument('--d_iter', type=int, default=5)
     parser.add_argument('--dataset', type=str, default='FMNIST', choices=['MNIST', 'FMNIST'])
     parser.add_argument('--fid', type=float, default=10.0)
     parser.add_argument('--gpu_num', type=int, default=1)
@@ -46,8 +45,6 @@ if __name__ == '__main__':
     parser.add_argument('--round', type=int, default=100)
     parser.add_argument('--size_z', type=int, default=100)
     parser.add_argument('--small', type=bool, default=False)
-    parser.add_argument('--threshold', type=float, default=0.25)
-    parser.add_argument('--warm_up', type=int, default=4)
     parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()
 
@@ -73,9 +70,7 @@ if __name__ == '__main__':
         data_state = ''
     # project name
     if args.project == 'GFL':
-        args.project_name = f'{args.project}_{args.dataset}{data_state}_c{args.client}_m{args.malicious}_ps{args.p_stage}_wrmp{args.warm_up}_rd{args.round}_g{args.g_epoch}_d{args.d_iter}_clf{args.clf_epoch}_th{args.threshold}_sd{args.seed}'
-    elif args.project == 'FL':
-        args.project_name = f'{args.project}_{args.dataset}{data_state}_c{args.client}_m{args.malicious}_lf{args.LF_set}_ps{args.p_stage}_rd{args.round}_sd{args.seed}'
+        args.project_name = f'imagegen_{args.dataset}_g{args.g_epoch}_{data_state}'
 
     # logger
     now = time.strftime("%Y%m%d_%H%M%S", time.localtime())
@@ -196,12 +191,6 @@ if __name__ == '__main__':
             img_dir = f'{save_path}/{args.project_name}/img/client{i+1}'
             if not os.path.exists(img_dir):
                 os.makedirs(img_dir)
-            # model_dir = f'{save_path}/{args.project_name}/model/client{i+1}'
-            # if not os.path.exists(model_dir):
-            #     os.makedirs(model_dir)
-            wrong_dir = f'{save_path}/{args.project_name}/wrong/client{i+1}'
-            if not os.path.exists(wrong_dir):
-                os.makedirs(wrong_dir)
             result_dir = f'{save_path}/{args.project_name}/result/client{i+1}'
             if not os.path.exists(result_dir):
                 os.makedirs(result_dir)
@@ -210,60 +199,11 @@ if __name__ == '__main__':
             logger.info(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
             logger.info(f'Round {Round+1} start')
             
-            # local training
-            logger.info('Local Classifier training')
-            for i in range(args.client):
-                clients[i].clf_train()
-            
-
             # GAN training
             logger.info('GAN training')
-            for i in range(args.client):
-                if clients[i].Gen_switch or (Round <= (args.warm_up - 1)):
-                    clients[i].gan_train(f'{save_path}/{args.project_name}/img/client{i+1}', Round)
-                    clients[i].generate_image(f'{save_path}/{args.project_name}/img/client{i+1}', Round)
-                    clients[i].local_gen_test(Round)
-
-            if (Round+1) % args.d_iter == 0:
-                logger.info('Neighbor Generator test')
-
-                # Make generated data loaders
-                generated_loaders = []
-                states = [0 if c.Gen_switch else 1 for c in clients]
-                W = copy.deepcopy(init_W)
-                for i in range(len(clients)):
-                    if states[i] == 1:
-                        generated_loaders.append(copy.deepcopy(clients[i].generated_loader))
-                    else:
-                        generated_loaders.append(None)
-                        for j in range(len(clients)):
-                            if not i == j:
-                                W[j][i] = 0
-
-                for i in range(args.client):
-                    W[i] = clients[i].gen_test(generated_loaders, states, f'{save_path}/{args.project_name}/wrong/client{i+1}', Round, W[i])            
-
-            # calculate W
-            logger.info(f'Changed Adjacency Matrix: \n{W}')
-            
-            # Aggregation
-            logger.info('Aggregation')
-            for i in range(args.client):
-                if (np.sum(W[i])>1) or (Round == (args.round - 1)):
-                    clients[i].modelcopy(fed_avg(clients, W[i]))
-            
-            logger.info('Aggregation test')
-            for i in range(args.client):
-                if (np.sum(W[i])>1) or (Round == (args.round - 1)):
-                    clients[i].modify_clf()
-                    clients[i].aggregation_test(Round, logging=True)
-                elif np.sum(W[i]) == 1:
-                    # clients[i].modify_clf()
-                    clients[i].aggregation_test(Round, logging=False)
-            logger.info('external test')
-            for i in range(args.client):
-                clients[i].external_test(Round)
-            
+            for i in [0, 9]:
+                clients[i].gan_train(f'{save_path}/{args.project_name}/img/client{i+1}', Round)
+                clients[i].generate_image(f'{save_path}/{args.project_name}/img/client{i+1}', Round)
 
         end_time = time.time()
         elapsed_time = end_time - start_time
@@ -272,51 +212,3 @@ if __name__ == '__main__':
 
         logger.info(f'End time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
         logger.info(f'Total time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds')
-
-        for i in range(args.client):
-            clients[i].make_plot(f'{save_path}/{args.project_name}/result/client{i+1}', 'acc_loss(local)', 'asr(local)', 'recall(local)')
-            clients[i].make_plot_ex(f'{save_path}/{args.project_name}/result/client{i+1}', 'acc_loss(ex)', 'asr(ex)', 'recall(ex)')
-
-    elif args.project == 'FL':
-        W = copy.deepcopy(init_W)
-        for Round in range(args.round):
-            logger.info(f'Time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-            logger.info(f'Round {Round+1} start')
-
-            for i in range(args.client):
-                # model_dir = f'{save_path}/{args.project_name}/model/client{i+1}'
-                # if not os.path.exists(model_dir):
-                #     os.makedirs(model_dir)
-                result_dir = f'{save_path}/{args.project_name}/result/client{i+1}'
-                if not os.path.exists(result_dir):
-                    os.makedirs(result_dir)
-        
-            logger.info('Classifier training')
-            for i in range(args.client):
-                clients[i].clf_train()
-            
-            # Aggregation
-            logger.info('Aggregation')
-            for i in range(args.client):
-                clients[i].modelcopy(fed_avg(clients, W[i]))
-                
-            logger.info('Aggregation test')
-            for i in range(args.client):
-                clients[i].modify_clf()
-                clients[i].aggregation_test(Round)
-
-            logger.info('external test')
-            for i in range(args.client):
-                clients[i].external_test(Round)
-    
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        hours, remainder = divmod(elapsed_time, 3600)
-        minutes, seconds = divmod(remainder, 60)
-
-        logger.info(f'End time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())}')
-        logger.info(f'Total time: {int(hours)} hours, {int(minutes)} minutes, {seconds:.2f} seconds')
-
-        for i in range(args.client):
-            clients[i].make_plot(f'{save_path}/{args.project_name}/result/client{i+1}', 'acc_loss(local)', 'asr(local)', 'recall(local)')
-            clients[i].make_plot_ex(f'{save_path}/{args.project_name}/result/client{i+1}', 'acc_loss(ex)', 'asr(ex)', 'recall(ex)')

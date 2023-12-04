@@ -10,6 +10,7 @@ from scipy.linalg import sqrtm
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 import torchvision
 
 import pandas as pd
@@ -33,8 +34,6 @@ class client:
         self.top_performance_ex = [0 for _ in range(4)] # accuracy, accuracy_round, loss, loss_round
 
         self.device = device
-
-        self.threshold = int(args.g_img_num * args.threshold)
 
         self.Gen_switch = True
 
@@ -103,6 +102,13 @@ class client:
         self.test_y = torch.tensor(list(range(self.args.num_classes))*self.args.g_img_num).type(torch.LongTensor)
         # convert to one hot encoding
         self.test_Gy = self.onehot[self.test_y].to(device)
+
+    def detection_formula(self, brier, recall):
+        # log(odds) = 3.26 + (1.02 * Brier0) + (-5.61 * Recall0)
+        log_odds = 3.26 + (1.02 * brier) + (-5.61 * recall)
+        odds = np.exp(log_odds)
+        return odds/(1+odds)
+
 
     def save_results_ex(self, accuracy, loss, wrong_count, total_count,log,Round):
         self.accuray_ex.append(accuracy)
@@ -391,7 +397,7 @@ class client:
             new_test_y = torch.tensor(list(range(self.args.num_classes))*self.args.g_img_num).type(torch.LongTensor)
             new_test_Gy = self.onehot[new_test_y].to(self.device)
             fake_image = self.netG(new_Z, new_test_Gy).cpu()
-            # torchvision.utils.save_image(fake_image, f"{save_path}/data_{Round+1}.jpg", nrow=10, padding=0, normalize=True)
+            torchvision.utils.save_image(fake_image, f"{save_path}/data_{Round+1}.jpg", nrow=10, padding=0, normalize=True)
         dataset = torch.utils.data.TensorDataset(fake_image, new_test_y)
         generated_loader = DataLoader(dataset, batch_size=self.args.batch_size, shuffle=True)
         self.generated_loader = generated_loader
@@ -453,7 +459,7 @@ class client:
         
         self.classifier.eval()
 
-        features = []
+        # features = []
         losses = []
         accuracies = []
 
@@ -462,9 +468,9 @@ class client:
             x = images.to(self.device)
             y = labels.to(self.device)
 
-            # for fid
-            feature = self.classifier(x, feature_extract=True)
-            features.append(feature)
+            # # for fid
+            # feature = self.classifier(x, feature_extract=True)
+            # features.append(feature)
 
             preds = self.classifier(x)
             loss = self.clf_criterion(preds, y)
@@ -474,9 +480,9 @@ class client:
             losses.append(loss.item())
             accuracies.append(correct)
 
-        features = torch.cat(features, dim=0)
-        self.mu_real = torch.mean(features, dim=0)
-        self.sigma_real = torch.cov(features.t())
+        # features = torch.cat(features, dim=0)
+        # self.mu_real = torch.mean(features, dim=0)
+        # self.sigma_real = torch.cov(features.t())
 
         log += f"\n  Test Loss {sum(losses)/len(losses):.5f} Accuracy {sum(accuracies)/len(accuracies):.5f}"
         self.logger.info(log)
@@ -489,7 +495,7 @@ class client:
         
         self.classifier.eval()
 
-        features = []
+        # features = []
         losses = []
         accuracies = []
 
@@ -498,9 +504,9 @@ class client:
             x = images.to(self.device)
             y = labels.to(self.device)
             
-            # for fid
-            feature = self.classifier(x, feature_extract=True)
-            features.append(feature)
+            # # for fid
+            # feature = self.classifier(x, feature_extract=True)
+            # features.append(feature)
 
             preds = self.classifier(x)
             loss = self.clf_criterion(preds, y)
@@ -510,9 +516,9 @@ class client:
             losses.append(loss.item())
             accuracies.append(correct)
             
-        features = torch.cat(features, dim=0)
-        mu_gen = torch.mean(features, dim=0)
-        sigma_gen = torch.cov(features.t())
+        # features = torch.cat(features, dim=0)
+        # mu_gen = torch.mean(features, dim=0)
+        # sigma_gen = torch.cov(features.t())
 
         log = f" Client{self.name+1} Gen Test: Loss {sum(losses)/len(losses):.5f} Accuracy {sum(accuracies)/len(accuracies):.5f}"
         self.logger.info(log)
@@ -520,13 +526,8 @@ class client:
         self.gen_acc = sum(accuracies)/len(accuracies)
         self.gen_loss = sum(losses)/len(losses)
 
-        fid = self.calculate_fid(self.mu_real, self.sigma_real, mu_gen, sigma_gen)
-        self.logger.info(f" Client{self.name+1} FID: {fid:.5f}")
-
-        if Round > (self.args.warm_up - 1):
-            if (self.gen_acc >= (floor(self.clf_acc * 100)/100)) and (self.gen_loss <= (ceil(self.clf_loss * 100)/100)) and (fid <= self.args.fid):
-                self.Gen_switch = False
-                self.logger.info(f" Client{self.name+1}: Generator training is stopped at Round {Round+1} with accuracy {self.gen_acc:.5f} and loss {self.gen_loss:.5f}")
+        # fid = self.calculate_fid(self.mu_real, self.sigma_real, mu_gen, sigma_gen)
+        # self.logger.info(f" Client{self.name+1} FID: {fid:.5f}")
 
     def calculate_fid(self, mu_real, sigma_real, mu_gen, sigma_gen):
         # torch.Tensor를 numpy.ndarray로 변환
@@ -657,9 +658,11 @@ class client:
         for (i, generated_loader), state in zip(enumerate(generated_loaders), states):
             correct_preds = 0
             total_preds = 0
-            loss_dict = {j: [] for j in range(self.args.num_classes)}  # Initialize a dictionary to keep track of wrong predictions for each label
-            wrong_count = {j: [] for j in range(self.args.num_classes)}  # Initialize a dictionary to keep track of wrong predictions for each label
-            
+            label_size = {j: 0 for j in range(self.args.num_classes)}  # 각 레이블의 개수 추적
+            loss_dict = {j: [] for j in range(self.args.num_classes)}  # 각 레이블의 loss 추적
+            wrong_count = {j: [] for j in range(self.args.num_classes)}  # 각 레이블의 오분류 추적
+            brier_scores = {j: [] for j in range(self.args.num_classes)}  # 각 레이블의 Brier Score 추적
+
             if state == 1:
                 for batch_idx, (images, labels) in enumerate(generated_loader):
                     images = images.to(self.device)
@@ -675,6 +678,13 @@ class client:
                         mask = labels == label
                         if mask.sum().item() > 0:
                             loss_dict[label].append(self.clf_criterion(test_preds[mask], labels[mask]).item())
+                            # Brier Score 계산
+                            test_probs = F.softmax(test_preds, dim=1)
+                            one_hot_labels = torch.zeros_like(test_probs).scatter_(1, labels.unsqueeze(1), 1)
+                            brier_score = torch.mean((test_probs[:, label] - one_hot_labels[:, label]) ** 2)
+                            brier_scores[label].append(brier_score.item())
+                            # 각 레이블의 개수 추적
+                            label_size[label] += mask.sum().item()
 
                     # Count correct predictions
                     correct_preds += (pred_labels == labels).sum().item()
@@ -700,18 +710,27 @@ class client:
 
                 # After processing all batches for this generator, log the summary of misclassifications
                 accuracy = correct_preds / total_preds
+                # 평균 Brier Score 계산
+                average_brier_scores = {label: sum(brier_scores[label])/len(brier_scores[label]) for label in range(self.args.num_classes)}
+                average_brier_score = sum(average_brier_scores.values()) / self.args.num_classes
                 # loss for each label
                 loss = {label: sum(loss_dict[label])/len(loss_dict[label]) for label in range(self.args.num_classes)}
-                log += f"\n  Generator {i+1} Accuracy: {accuracy:.5f}, Loss: {loss}\n   Summary of misclassifications for Generator {i+1}:"
+                log += f"\n  Generator {i+1} Accuracy: {accuracy:.5f}, Loss: {loss}"
+                log += f"\n  Brier Score for each label: {average_brier_scores}\n  Total Brier Score: {average_brier_score:.5f}"
+                log += f"\n   Summary of misclassifications for Generator {i+1}:"
                 for true_label, pred_labels in wrong_count.items():
                     counter = Counter(pred_labels)
                     counter_dict = dict(counter)
                     oreder_dict = OrderedDict(sorted(counter_dict.items(), key=lambda item: item[0]))
                     log += f" \n    True label {true_label} was misclassified as: {oreder_dict}"
-                    anomaly = [number for number, count in oreder_dict.items() if count > self.threshold]
-                    if anomaly:
-                        for poison_label in anomaly:
-                            log += f"\n     Detection: Source label {true_label} was misclassified as Target label {poison_label}"
+                    # calculate recall and detection
+                    # sum all misclassified images for this label
+                    wrong_total = len(pred_labels)
+                    recall = (label_size[true_label]-wrong_total)/label_size[true_label]
+                    brier = average_brier_scores[true_label]
+                    detection = self.detection_formula(brier, recall)
+                    if detection >= 0.5:
+                        log += f"\n    Attack Detected: {detection:.5f} ; Brier Score: {brier:.5f} Recall: {recall:.5f}"
                         if not self.name == i:
                             W[i] = 0
             else:

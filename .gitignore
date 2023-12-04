@@ -19,9 +19,18 @@ data/
 experiment/
 output.png
 project/
+project_nonFL/
+project_past/
 result1/
 log/
 log_past/
+log_nonFL/
+log_nonFL_040/
+formula_data/
+formula_log2/
+data_020/
+download/
+formula_log/
 
 # C extensions
 *.so
